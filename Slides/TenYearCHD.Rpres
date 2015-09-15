@@ -1,0 +1,76 @@
+Predicting Coronary Heart Disease Shiny App
+========================================================
+author: Honto Ming
+date: September 14, 2015
+
+Introduction
+========================================================
+For the Coursera Developing Data Products Course Project, I created a Shiny web app that predicts whether a patient will be diagnosed with Coronary Heart Disease (CHD) in the next 10 years given the following characteristics of the patient:  
+
+- Sex: Sex of the patient
+- Age: Age of the patient
+- Cigarettes Smoked Per Day: Daily average number of cigarettes the patient smokes
+- Prevalent for Hypertension: Whether the patient is prevalent to hypertension
+- Systolic Blood Pressure: Latest systolic blood pressure reading for the patient
+- Glucose: Latest glucose levels for the patient  
+
+The Data
+========================================================
+The data is a subset of the data collected by the Framingham Heart Study (FHS). FHS is a project of Boston University, and its goal is to identify risk factors for heart disease.  
+```{r echo=FALSE}
+library(dplyr)
+library(caret)
+library(ROCR)
+
+# Read in the data
+heart1 <- read.csv("../App/data/framingham.csv")
+
+# remove the NA's
+heart1 <- heart1[complete.cases(heart1),]
+
+# change education & label to factor variables, and then create dummy variables
+heart1 <- mutate(heart1, male=as.factor(male), education=as.factor(education), currentSmoker=as.factor(currentSmoker),
+                 BPMeds = as.factor(BPMeds), prevalentStroke=as.factor(prevalentStroke),
+                 prevalentHyp=as.factor(prevalentHyp), diabetes=as.factor(diabetes),
+                 TenYearCHD=as.factor(TenYearCHD))
+# split into training and testing set 80/20 split
+set.seed(1234)
+trainIdx <- createDataPartition(heart1$TenYearCHD, p=0.8, list=FALSE, times=1)
+heart.train <- heart1[trainIdx,]
+heart.test <- heart1[-trainIdx,]
+
+```
+
+We split the data into a 80-20 training-testing split, and then fitted a logistic regression model to it. 
+```{r}
+logit.model <- glm(TenYearCHD ~ ., data=heart.train, family=binomial)
+```  
+
+We then took the results from this initial model to find the significant predictor variables so that we could fit a simpler model with less predictors for the Shiny App
+
+The Prediction Model
+========================================================
+The final model was fitted using the 6 significant fields from the orignal 15. By limiting the predictors to 6, we provide a better user experience without losing much accuracy in the model.  
+```{r}
+logit.model.2 <- glm(TenYearCHD ~ male + age + cigsPerDay + prevalentHyp + sysBP + glucose, data=heart.train, family=binomial)
+```
+
+With a threshold set at 0.4 the model has the following performance metrics:  
+```{r echo=FALSE}
+predict.test <- predict(logit.model.2, type="response", newdata=heart.test[,c("male", "age", "cigsPerDay", "prevalentHyp", "sysBP", "glucose")])
+pred.test.class <- as.factor(predict.test > 0.4)
+levels(pred.test.class) <- c("FALSE", "TRUE")
+label.test.class <- heart.test$TenYearCHD
+levels(label.test.class) <- c("FALSE", "TRUE")
+metrics <- confusionMatrix(data=pred.test.class, reference=label.test.class, positive="TRUE")
+paste("Model Accuracy:", format(metrics[["overall"]]["Accuracy"], digits=4))
+paste("Model Sensitivity:", format(metrics[["byClass"]]["Sensitivity"], digits=4))
+paste("Model Specificity:", format(metrics[["byClass"]]["Specificity"], digits=4))
+```
+
+The Shiny App
+========================================================
+The shipy app is hosted on shinyapps.io, and is available for anyone to use at: https://honto-ming.shinyapps.io/Coursera_DevDataProd_Proj
+
+![Screenshot of Shiny App](TenYearCHD-figure/shinyApp.png)
+
